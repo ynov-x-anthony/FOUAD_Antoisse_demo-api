@@ -2,7 +2,7 @@
 
 /*
  * demo-api - mini API "catalogue" pour le fil rouge des quetes Docker.
- * Metier volontairement trivial : toute la difficulte est sur Docker.
+ * Metier volontairement trivial : toute la difficulte est sur Docker (et le cache de build).
  *
  * Variables d'environnement :
  *   PORT             port d'ecoute                    (def: 3000)
