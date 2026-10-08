@@ -1,0 +1,7 @@
+# Repère de comparaison VOLONTAIREMENT non optimisé (quête multi-étapes).
+# Ce n'est pas le Dockerfile de prod : voir Dockerfile et Dockerfile.multi.
+FROM node:22
+WORKDIR /app
+COPY . .
+RUN npm ci
+CMD ["node", "server.js"]
