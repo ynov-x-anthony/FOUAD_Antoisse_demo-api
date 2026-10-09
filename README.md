@@ -8,6 +8,95 @@ Le métier est volontairement trivial (`Node` + `Express` + `PostgreSQL`,
 un catalogue de produits) : toute la difficulté est sur **Docker**, jamais
 sur le code applicatif.
 
+## Lancer la stack avec Docker Compose
+
+La stack complète est décrite dans [`compose.yml`](compose.yml) :
+
+| Service | Image | Accès |
+|---|---|---|
+| `api` | construite depuis `./api` | http://localhost:8080 (`API_PORT`) |
+| `db` | `postgres:16-alpine` | **non publiée**, joignable seulement par `api` sur le réseau du projet |
+| `adminer` | `adminer:4` | http://localhost:8081 (`ADMINER_PORT`) |
+
+- `db` : volume nommé `pgdata` (données), `db/init.sql` monté en lecture
+  seule (joué au premier démarrage uniquement), healthcheck `pg_isready`.
+- `api` : démarre seulement quand `db` est *healthy*
+  (`depends_on: condition: service_healthy`), `restart: unless-stopped`.
+- Le mot de passe de la base passe par **Docker Secrets** : `db` le lit via
+  `POSTGRES_PASSWORD_FILE` et `api` via `PGPASSWORD_FILE` (support ajouté dans
+  `api/db.js`). Il n'apparaît ni dans `compose.yml`, ni dans `.env`, ni dans
+  `printenv` des conteneurs.
+
+### Prérequis
+
+- Docker Engine + Compose v2 (`docker compose version`), Docker Desktop sous
+  macOS / Windows.
+- `git`, `curl` (sous PowerShell, utiliser `curl.exe`).
+
+### Démarrage
+
+```bash
+# 1. Variables d'interpolation ${} (fichier .env non commité)
+cp .env.example .env
+
+# 2. Mot de passe de la base, en secret hors Git (secrets/ est dans .gitignore)
+mkdir -p secrets
+openssl rand -base64 18 > secrets/db_password.txt   # ou n'importe quel mot de passe
+
+# 3. Build + démarrage en arrière-plan
+docker compose up -d --build
+```
+
+| Variable (`.env`) | Rôle | Défaut |
+|---|---|---|
+| `POSTGRES_USER` | utilisateur PostgreSQL, aussi utilisé par l'API | `demo` |
+| `POSTGRES_DB` | base PostgreSQL | `demo` |
+| `API_PORT` | port hôte de l'API | `8080` |
+| `ADMINER_PORT` | port hôte d'Adminer | `8081` |
+
+URLs :
+
+- API : http://localhost:8080/products
+- Adminer : http://localhost:8081 (système *PostgreSQL*, serveur `db`,
+  utilisateur `demo`, mot de passe = contenu de `secrets/db_password.txt`)
+
+### Commande testée et résultat
+
+Testé le 09/10/2026 (Windows 11, Docker Desktop, Engine 29.8.2,
+Compose v5.5.1) avec `docker compose up -d --build` :
+
+```text
+$ docker compose ps
+NAME                                IMAGE                         STATUS                    PORTS
+fouad_antoisse_demo-api-adminer-1   adminer:4                     Up 32 seconds             0.0.0.0:8081->8080/tcp
+fouad_antoisse_demo-api-api-1       fouad_antoisse_demo-api-api   Up 26 seconds (healthy)   0.0.0.0:8080->3000/tcp
+fouad_antoisse_demo-api-db-1        postgres:16-alpine            Up 32 seconds (healthy)   5432/tcp
+```
+
+Persistance vérifiée : un produit ajouté survit à `down` puis `up`.
+
+```text
+$ curl -s -X POST -H 'content-type: application/json' -d '{"name":"Gourde","price_cents":900}' localhost:8080/products
+{"id":4,"name":"Gourde","price_cents":900,"created_at":"2026-10-09T11:42:58.129Z"}
+
+$ docker compose down && docker compose up -d
+$ curl -s localhost:8080/products
+[{"id":4,"name":"Gourde","price_cents":900,...},{"id":3,"name":"T-shirt conteneur",...},{"id":2,"name":"Mug Docker",...},{"id":1,"name":"Sticker Demo",...}]
+
+$ docker compose exec api sh -c "printenv | grep ^PG"
+PGDATABASE=demo
+PGPASSWORD_FILE=/run/secrets/db_password
+PGHOST=db
+PGUSER=demo
+```
+
+### Arrêter / repartir de zéro
+
+```bash
+docker compose down      # supprime conteneurs + réseau, GARDE le volume pgdata (données conservées)
+docker compose down -v   # supprime AUSSI le volume pgdata : données perdues, init.sql rejoué au prochain up
+```
+
 ## Point de départ
 
 Ce dossier est ce que tu clones **avant ta première quête Docker**. Il n'y a
